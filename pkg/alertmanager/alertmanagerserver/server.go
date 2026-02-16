@@ -322,18 +322,16 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 	)
 
 	// DEBUG: Wrap each stage in the pipeline with logging to trace alert drops
-	if rs, ok := pipeline.(notify.RoutingStage); ok {
-		for name, stage := range rs {
-			if ms, ok := stage.(notify.MultiStage); ok {
-				for i, s := range ms {
-					ms[i] = &loggingStageWrapper{
-						inner:  s,
-						name:   fmt.Sprintf("%s/stage[%d]/%T", name, i, s),
-						logger: server.logger,
-					}
+	for name, stage := range pipeline {
+		if ms, ok := stage.(notify.MultiStage); ok {
+			for i, s := range ms {
+				ms[i] = &loggingStageWrapper{
+					inner:  s,
+					name:   fmt.Sprintf("%s/stage[%d]/%T", name, i, s),
+					logger: server.logger,
 				}
-				rs[name] = ms
 			}
+			pipeline[name] = ms
 		}
 	}
 
