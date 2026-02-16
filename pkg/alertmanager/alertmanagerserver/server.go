@@ -2,6 +2,7 @@ package alertmanagerserver
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -68,6 +69,27 @@ type Server struct {
 	wg                  sync.WaitGroup
 	stopc               chan struct{}
 	notificationManager nfmanager.NotificationManager
+}
+
+type loggingStageWrapper struct {
+	inner  notify.Stage
+	name   string
+	logger *slog.Logger
+}
+
+func (l *loggingStageWrapper) Exec(ctx context.Context, logger *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+	l.logger.InfoContext(ctx, "DEBUG stage input",
+		"stage", l.name,
+		"input_alerts", len(alerts),
+	)
+	ctx, result, err := l.inner.Exec(ctx, logger, alerts...)
+	l.logger.InfoContext(ctx, "DEBUG stage output",
+		"stage", l.name,
+		"input_alerts", len(alerts),
+		"output_alerts", len(result),
+		"error", fmt.Sprintf("%v", err),
+	)
+	return ctx, result, err
 }
 
 func New(ctx context.Context, logger *slog.Logger, registry prometheus.Registerer, srvConfig Config, orgID string, stateStore alertmanagertypes.StateStore, nfManager nfmanager.NotificationManager) (*Server, error) {
@@ -298,6 +320,22 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		server.nflog,
 		pipelinePeer,
 	)
+
+	// DEBUG: Wrap each stage in the pipeline with logging to trace alert drops
+	if rs, ok := pipeline.(notify.RoutingStage); ok {
+		for name, stage := range rs {
+			if ms, ok := stage.(notify.MultiStage); ok {
+				for i, s := range ms {
+					ms[i] = &loggingStageWrapper{
+						inner:  s,
+						name:   fmt.Sprintf("%s/stage[%d]/%T", name, i, s),
+						logger: server.logger,
+					}
+				}
+				rs[name] = ms
+			}
+		}
+	}
 
 	timeoutFunc := func(d time.Duration) time.Duration {
 		if d < notify.MinTimeout {
