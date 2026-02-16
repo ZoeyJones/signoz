@@ -325,6 +325,21 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 	for name, stage := range pipeline {
 		if ms, ok := stage.(notify.MultiStage); ok {
 			for i, s := range ms {
+				// Also wrap inner stages inside FanoutStage
+				if fs, ok := s.(notify.FanoutStage); ok {
+					for j, inner := range fs {
+						if innerMs, ok := inner.(notify.MultiStage); ok {
+							for k, innerS := range innerMs {
+								innerMs[k] = &loggingStageWrapper{
+									inner:  innerS,
+									name:   fmt.Sprintf("%s/fanout[%d]/stage[%d]/%T", name, j, k, innerS),
+									logger: server.logger,
+								}
+							}
+							fs[j] = innerMs
+						}
+					}
+				}
 				ms[i] = &loggingStageWrapper{
 					inner:  s,
 					name:   fmt.Sprintf("%s/stage[%d]/%T", name, i, s),
