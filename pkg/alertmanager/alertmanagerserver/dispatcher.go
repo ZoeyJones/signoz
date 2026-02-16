@@ -125,14 +125,11 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 			}
 
 			now := time.Now()
-			ruleID := getRuleIDFromAlert(alert)
-			d.logger.InfoContext(d.ctx, "SigNoz Dispatcher: matching alert", "ruleId", ruleID, "orgId", d.orgID, "alertLabels", alert.Labels.String())
-			channels, err := d.notificationManager.Match(d.ctx, d.orgID, ruleID, alert.Labels)
+			channels, err := d.notificationManager.Match(d.ctx, d.orgID, getRuleIDFromAlert(alert), alert.Labels)
 			if err != nil {
-				d.logger.ErrorContext(d.ctx, "Error on alert match", "err", err, "ruleId", ruleID)
+				d.logger.ErrorContext(d.ctx, "Error on alert match", "err", err)
 				continue
 			}
-			d.logger.InfoContext(d.ctx, "SigNoz Dispatcher: match result", "ruleId", ruleID, "channelCount", len(channels), "channels", channels)
 			for _, channel := range channels {
 				route := d.getOrCreateRoute(channel)
 				d.processAlert(alert, route)
@@ -328,7 +325,6 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-		d.logger.InfoContext(ctx, "SigNoz Dispatcher: executing notification pipeline", "num_alerts", len(alerts), "route_receiver", route.RouteOpts.Receiver)
 		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
@@ -337,8 +333,6 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 			} else {
 				logger.ErrorContext(ctx, "Notify for alerts failed")
 			}
-		} else {
-			d.logger.InfoContext(ctx, "SigNoz Dispatcher: notification pipeline succeeded", "num_alerts", len(alerts), "route_receiver", route.RouteOpts.Receiver)
 		}
 		return err == nil
 	})
