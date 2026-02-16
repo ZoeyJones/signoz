@@ -239,27 +239,20 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 
 	server.tmpl.ExternalURL = server.srvConfig.ExternalURL
 
-	// Build the routing tree and record which receivers are used.
+	// Build the routing tree.
 	routes := dispatch.NewRoute(config.Route, nil)
-	activeReceivers := make(map[string]struct{})
-	routes.Walk(func(r *dispatch.Route) {
-		activeReceivers[r.RouteOpts.Receiver] = struct{}{}
-	})
 
 	// Build the map of receiver to integrations.
-	receivers := make(map[string][]notify.Integration, len(activeReceivers))
+	// Build integrations for ALL receivers (not just those referenced by routes)
+	// because the custom SigNoz dispatcher routes alerts to receivers by channel name,
+	// bypassing the alertmanager routing tree.
+	receivers := make(map[string][]notify.Integration, len(config.Receivers))
 	var integrationsNum int
 	for _, rcv := range config.Receivers {
-		if _, found := activeReceivers[rcv.Name]; !found {
-			// No need to build a receiver if no route is using it.
-			server.logger.InfoContext(ctx, "skipping creation of receiver not referenced by any route", "receiver", rcv.Name)
-			continue
-		}
 		integrations, err := alertmanagernotify.NewReceiverIntegrations(rcv, server.tmpl, server.logger)
 		if err != nil {
 			return err
 		}
-		// rcv.Name is guaranteed to be unique across all receivers.
 		receivers[rcv.Name] = integrations
 		integrationsNum += len(integrations)
 	}
