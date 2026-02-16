@@ -175,20 +175,25 @@ func (r *provider) DeleteAllRoutePoliciesByName(ctx context.Context, orgID strin
 func (r *provider) Match(ctx context.Context, orgID string, ruleID string, set model.LabelSet) ([]string, error) {
 	config, err := r.GetNotificationConfig(orgID, ruleID)
 	if err != nil {
+		r.settings.Logger().InfoContext(ctx, "Match: error getting notification config", "orgID", orgID, "ruleID", ruleID, "error", err)
 		return nil, errors.NewInternalf(errors.CodeInternal, "error getting notification configuration: %v", err)
 	}
+	r.settings.Logger().InfoContext(ctx, "Match: got notification config", "orgID", orgID, "ruleID", ruleID, "usePolicy", config.UsePolicy)
 	var expressionRoutes []*alertmanagertypes.RoutePolicy
 	if config.UsePolicy {
 		expressionRoutes, err = r.routeStore.GetAllByKind(ctx, orgID, alertmanagertypes.PolicyBasedExpression)
 		if err != nil {
+			r.settings.Logger().InfoContext(ctx, "Match: error getting policy routes", "orgID", orgID, "error", err)
 			return []string{}, errors.NewInternalf(errors.CodeInternal, "error getting route policies: %v", err)
 		}
 	} else {
 		expressionRoutes, err = r.routeStore.GetAllByName(ctx, orgID, ruleID)
 		if err != nil {
+			r.settings.Logger().InfoContext(ctx, "Match: error getting rule routes", "orgID", orgID, "ruleID", ruleID, "error", err)
 			return []string{}, errors.NewInternalf(errors.CodeInternal, "error getting route policies: %v", err)
 		}
 	}
+	r.settings.Logger().InfoContext(ctx, "Match: got routes", "orgID", orgID, "routeCount", len(expressionRoutes))
 	var matchedChannels []string
 	if _, ok := set[alertmanagertypes.NoDataLabel]; ok && !config.UsePolicy {
 		for _, expressionRoute := range expressionRoutes {
@@ -200,13 +205,16 @@ func (r *provider) Match(ctx context.Context, orgID string, ruleID string, set m
 	for _, route := range expressionRoutes {
 		evaluateExpr, err := r.evaluateExpr(ctx, route.Expression, set)
 		if err != nil {
+			r.settings.Logger().ErrorContext(ctx, "Match: expression eval error", "expression", route.Expression, "error", err)
 			continue
 		}
+		r.settings.Logger().InfoContext(ctx, "Match: expression evaluated", "expression", route.Expression, "result", evaluateExpr, "channels", route.Channels)
 		if evaluateExpr {
 			matchedChannels = append(matchedChannels, route.Channels...)
 		}
 	}
 
+	r.settings.Logger().InfoContext(ctx, "Match: final result", "orgID", orgID, "ruleID", ruleID, "matchedChannels", matchedChannels)
 	return matchedChannels, nil
 }
 

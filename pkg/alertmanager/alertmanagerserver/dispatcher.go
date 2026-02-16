@@ -125,11 +125,14 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 			}
 
 			now := time.Now()
-			channels, err := d.notificationManager.Match(d.ctx, d.orgID, getRuleIDFromAlert(alert), alert.Labels)
+			ruleID := getRuleIDFromAlert(alert)
+			d.logger.InfoContext(d.ctx, "SigNoz Dispatcher: matching alert", "ruleId", ruleID, "orgId", d.orgID, "alertLabels", alert.Labels.String())
+			channels, err := d.notificationManager.Match(d.ctx, d.orgID, ruleID, alert.Labels)
 			if err != nil {
-				d.logger.ErrorContext(d.ctx, "Error on alert match", "err", err)
+				d.logger.ErrorContext(d.ctx, "Error on alert match", "err", err, "ruleId", ruleID)
 				continue
 			}
+			d.logger.InfoContext(d.ctx, "SigNoz Dispatcher: match result", "ruleId", ruleID, "channelCount", len(channels), "channels", channels)
 			for _, channel := range channels {
 				route := d.getOrCreateRoute(channel)
 				d.processAlert(alert, route)
