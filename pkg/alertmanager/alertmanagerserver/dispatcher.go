@@ -325,7 +325,7 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
+		_, sentAlerts, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
 			if errors.Is(ctx.Err(), context.Canceled) {
@@ -334,6 +334,13 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 				logger.ErrorContext(ctx, "Notify for alerts failed")
 			}
 		}
+		d.logger.InfoContext(ctx, "DEBUG pipeline exec result",
+			"receiver", ag.opts.Receiver,
+			"input_alerts", len(alerts),
+			"sent_alerts", len(sentAlerts),
+			"repeat_interval", ag.opts.RepeatInterval,
+			"error", err,
+		)
 		return err == nil
 	})
 }
