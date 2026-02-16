@@ -45,7 +45,6 @@ type Dispatcher struct {
 	notificationManager nfmanager.NotificationManager
 	orgID               string
 	receiverRoutes      map[string]*dispatch.Route
-	receivers           map[string][]notify.Integration
 }
 
 // We use the upstream Limits interface from Prometheus
@@ -63,7 +62,6 @@ func NewDispatcher(
 	m *DispatcherMetrics,
 	n nfmanager.NotificationManager,
 	orgID string,
-	receivers map[string][]notify.Integration,
 ) *Dispatcher {
 	if lim == nil {
 		// Use a simple implementation when no limits are provided
@@ -81,7 +79,6 @@ func NewDispatcher(
 		limits:              lim,
 		notificationManager: n,
 		orgID:               orgID,
-		receivers:           receivers,
 	}
 	return disp
 }
@@ -328,34 +325,7 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-		// DEBUG: Directly call integrations to bypass pipeline and test if SMTP works
-		if integrations, ok := d.receivers[ag.opts.Receiver]; ok {
-			d.logger.InfoContext(ctx, "DEBUG direct integration call",
-				"receiver", ag.opts.Receiver,
-				"num_integrations", len(integrations),
-				"num_alerts", len(alerts),
-			)
-			for idx, integration := range integrations {
-				d.logger.InfoContext(ctx, "DEBUG calling integration directly",
-					"receiver", ag.opts.Receiver,
-					"integration_name", integration.Name(),
-					"integration_index", idx,
-				)
-				retry, err := integration.Notify(ctx, alerts...)
-				d.logger.InfoContext(ctx, "DEBUG direct integration result",
-					"receiver", ag.opts.Receiver,
-					"integration_name", integration.Name(),
-					"retry", retry,
-					"error", fmt.Sprintf("%v", err),
-				)
-			}
-		} else {
-			d.logger.InfoContext(ctx, "DEBUG no integrations found for receiver",
-				"receiver", ag.opts.Receiver,
-			)
-		}
-
-		_, sentAlerts, err := d.stage.Exec(ctx, d.logger, alerts...)
+		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
 			if errors.Is(ctx.Err(), context.Canceled) {
@@ -364,13 +334,6 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 				logger.ErrorContext(ctx, "Notify for alerts failed")
 			}
 		}
-		d.logger.InfoContext(ctx, "DEBUG pipeline exec result",
-			"receiver", ag.opts.Receiver,
-			"input_alerts", len(alerts),
-			"sent_alerts", len(sentAlerts),
-			"repeat_interval", ag.opts.RepeatInterval,
-			"error", err,
-		)
 		return err == nil
 	})
 }

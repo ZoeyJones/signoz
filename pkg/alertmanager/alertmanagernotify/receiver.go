@@ -1,8 +1,6 @@
 package alertmanagernotify
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/SigNoz/signoz/pkg/alertmanager/alertmanagernotify/msteamsv2"
@@ -12,26 +10,6 @@ import (
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
 )
-
-type loggingNotifier struct {
-	inner  notify.Notifier
-	name   string
-	logger *slog.Logger
-}
-
-func (l *loggingNotifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
-	l.logger.InfoContext(ctx, "DEBUG integration Notify called",
-		"integration", l.name,
-		"num_alerts", len(alerts),
-	)
-	retry, err := l.inner.Notify(ctx, alerts...)
-	l.logger.InfoContext(ctx, "DEBUG integration Notify result",
-		"integration", l.name,
-		"retry", retry,
-		"error", fmt.Sprintf("%v", err),
-	)
-	return retry, err
-}
 
 func NewReceiverIntegrations(nc alertmanagertypes.Receiver, tmpl *template.Template, logger *slog.Logger) ([]notify.Integration, error) {
 	upstreamIntegrations, err := receiver.BuildReceiverIntegrations(nc, tmpl, logger)
@@ -55,18 +33,7 @@ func NewReceiverIntegrations(nc alertmanagertypes.Receiver, tmpl *template.Templ
 	for _, integration := range upstreamIntegrations {
 		// skip upstream msteamsv2 integration
 		if integration.Name() != "msteamsv2" {
-			wrapperName := fmt.Sprintf("%s/%s[%d]", nc.Name, integration.Name(), integration.Index())
-			logger.Info("DEBUG wrapping integration with logging notifier",
-				"wrapper_name", wrapperName,
-				"original_name", integration.Name(),
-				"original_index", integration.Index(),
-			)
-			wrapped := &loggingNotifier{
-				inner:  &integration,
-				name:   wrapperName,
-				logger: logger,
-			}
-			integrations = append(integrations, notify.NewIntegration(wrapped, &integration, integration.Name(), integration.Index(), nc.Name))
+			integrations = append(integrations, integration)
 		}
 	}
 

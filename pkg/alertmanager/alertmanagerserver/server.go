@@ -2,7 +2,6 @@ package alertmanagerserver
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -69,27 +68,6 @@ type Server struct {
 	wg                  sync.WaitGroup
 	stopc               chan struct{}
 	notificationManager nfmanager.NotificationManager
-}
-
-type loggingStageWrapper struct {
-	inner  notify.Stage
-	name   string
-	logger *slog.Logger
-}
-
-func (l *loggingStageWrapper) Exec(ctx context.Context, logger *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
-	l.logger.InfoContext(ctx, "DEBUG stage input",
-		"stage", l.name,
-		"input_alerts", len(alerts),
-	)
-	ctx, result, err := l.inner.Exec(ctx, logger, alerts...)
-	l.logger.InfoContext(ctx, "DEBUG stage output",
-		"stage", l.name,
-		"input_alerts", len(alerts),
-		"output_alerts", len(result),
-		"error", fmt.Sprintf("%v", err),
-	)
-	return ctx, result, err
 }
 
 func New(ctx context.Context, logger *slog.Logger, registry prometheus.Registerer, srvConfig Config, orgID string, stateStore alertmanagertypes.StateStore, nfManager nfmanager.NotificationManager) (*Server, error) {
@@ -277,13 +255,6 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		}
 		receivers[rcv.Name] = integrations
 		integrationsNum += len(integrations)
-		server.logger.InfoContext(ctx, "DEBUG receiver integrations",
-			"receiver", rcv.Name,
-			"integration_count", len(integrations),
-			"email_configs", len(rcv.EmailConfigs),
-			"webhook_configs", len(rcv.WebhookConfigs),
-			"smarthost", config.Global.SMTPSmarthost.String(),
-		)
 	}
 
 	// Build the map of time interval names to time interval definitions.
@@ -321,32 +292,30 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		pipelinePeer,
 	)
 
-	// DEBUG: Wrap each stage in the pipeline with logging to trace alert drops
-	for name, stage := range pipeline {
+	// Remove DedupStage and SetNotifiesStage from the inner per-integration pipeline.
+	// The SigNoz custom dispatcher handles its own repeat interval logic via aggrGroup timers.
+	// The upstream DedupStage uses a notification log (nflog) that persists across deploys,
+	// causing stale entries to suppress notifications for the entire RepeatInterval (4h default).
+	for _, stage := range pipeline {
 		if ms, ok := stage.(notify.MultiStage); ok {
-			for i, s := range ms {
-				// Also wrap inner stages inside FanoutStage
+			for _, s := range ms {
 				if fs, ok := s.(notify.FanoutStage); ok {
 					for j, inner := range fs {
 						if innerMs, ok := inner.(notify.MultiStage); ok {
-							for k, innerS := range innerMs {
-								innerMs[k] = &loggingStageWrapper{
-									inner:  innerS,
-									name:   fmt.Sprintf("%s/fanout[%d]/stage[%d]/%T", name, j, k, innerS),
-									logger: server.logger,
+							var filtered notify.MultiStage
+							for _, innerS := range innerMs {
+								switch innerS.(type) {
+								case *notify.DedupStage, *notify.SetNotifiesStage:
+									continue
+								default:
+									filtered = append(filtered, innerS)
 								}
 							}
-							fs[j] = innerMs
+							fs[j] = filtered
 						}
 					}
 				}
-				ms[i] = &loggingStageWrapper{
-					inner:  s,
-					name:   fmt.Sprintf("%s/stage[%d]/%T", name, i, s),
-					logger: server.logger,
-				}
 			}
-			pipeline[name] = ms
 		}
 	}
 
@@ -368,7 +337,6 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		server.dispatcherMetrics,
 		server.notificationManager,
 		server.orgID,
-		receivers,
 	)
 
 	// Do not try to add these to server.wg as there seems to be a race condition if
