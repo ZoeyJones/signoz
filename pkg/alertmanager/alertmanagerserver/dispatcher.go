@@ -335,6 +335,24 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 				"labels", a.Labels.String(),
 			)
 		}
+
+		// DEBUG: Also try direct RoutingStage type assertion to examine inner stages
+		if rs, ok := d.stage.(notify.RoutingStage); ok {
+			d.logger.InfoContext(ctx, "DEBUG RoutingStage receivers",
+				"receiver", ag.opts.Receiver,
+				"routing_stage_size", len(rs),
+			)
+			for name := range rs {
+				d.logger.InfoContext(ctx, "DEBUG RoutingStage entry",
+					"entry_name", name,
+				)
+			}
+		} else {
+			d.logger.InfoContext(ctx, "DEBUG stage type",
+				"type", fmt.Sprintf("%T", d.stage),
+			)
+		}
+
 		_, sentAlerts, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
