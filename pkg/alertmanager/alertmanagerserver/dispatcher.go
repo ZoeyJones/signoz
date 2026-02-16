@@ -328,17 +328,17 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
+		d.logger.InfoContext(ctx, "SigNoz Dispatcher: executing notification pipeline", "num_alerts", len(alerts), "route_receiver", route.RouteOpts.Receiver)
 		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
 			if errors.Is(ctx.Err(), context.Canceled) {
-				// It is expected for the context to be canceled on
-				// configuration reload or shutdown. In this case, the
-				// message should only be logged at the debug level.
 				logger.DebugContext(ctx, "Notify for alerts failed")
 			} else {
 				logger.ErrorContext(ctx, "Notify for alerts failed")
 			}
+		} else {
+			d.logger.InfoContext(ctx, "SigNoz Dispatcher: notification pipeline succeeded", "num_alerts", len(alerts), "route_receiver", route.RouteOpts.Receiver)
 		}
 		return err == nil
 	})
