@@ -325,6 +325,16 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
+		for i, a := range alerts {
+			d.logger.InfoContext(ctx, "DEBUG alert before pipeline",
+				"receiver", ag.opts.Receiver,
+				"alert_index", i,
+				"resolved", a.Resolved(),
+				"starts_at", a.StartsAt,
+				"ends_at", a.EndsAt,
+				"labels", a.Labels.String(),
+			)
+		}
 		_, sentAlerts, err := d.stage.Exec(ctx, d.logger, alerts...)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
