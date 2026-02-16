@@ -55,9 +55,15 @@ func NewReceiverIntegrations(nc alertmanagertypes.Receiver, tmpl *template.Templ
 	for _, integration := range upstreamIntegrations {
 		// skip upstream msteamsv2 integration
 		if integration.Name() != "msteamsv2" {
+			wrapperName := fmt.Sprintf("%s/%s[%d]", nc.Name, integration.Name(), integration.Index())
+			logger.Info("DEBUG wrapping integration with logging notifier",
+				"wrapper_name", wrapperName,
+				"original_name", integration.Name(),
+				"original_index", integration.Index(),
+			)
 			wrapped := &loggingNotifier{
 				inner:  &integration,
-				name:   fmt.Sprintf("%s/%s[%d]", nc.Name, integration.Name(), integration.Index()),
+				name:   wrapperName,
 				logger: logger,
 			}
 			integrations = append(integrations, notify.NewIntegration(wrapped, &integration, integration.Name(), integration.Index(), nc.Name))
