@@ -116,7 +116,7 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 				return
 			}
 
-			d.logger.InfoContext(d.ctx, "DEBUG dispatcher received alert", "alert_labels", alert.Labels)
+			d.logger.DebugContext(d.ctx, "SigNoz Custom Dispatcher: Received alert", "alert", alert)
 
 			// Log errors but keep trying.
 			if err := it.Err(); err != nil {
@@ -125,13 +125,11 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 			}
 
 			now := time.Now()
-			ruleID := getRuleIDFromAlert(alert)
-			channels, err := d.notificationManager.Match(d.ctx, d.orgID, ruleID, alert.Labels)
+			channels, err := d.notificationManager.Match(d.ctx, d.orgID, getRuleIDFromAlert(alert), alert.Labels)
 			if err != nil {
 				d.logger.ErrorContext(d.ctx, "Error on alert match", "err", err)
 				continue
 			}
-			d.logger.InfoContext(d.ctx, "DEBUG dispatcher matched channels", "rule_id", ruleID, "channels", channels, "num_channels", len(channels))
 			for _, channel := range channels {
 				route := d.getOrCreateRoute(channel)
 				d.processAlert(alert, route)
@@ -327,9 +325,7 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-		d.logger.InfoContext(ctx, "DEBUG aggrGroup flush calling stage.Exec", "num_alerts", len(alerts), "receiver", ag.opts.Receiver)
 		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
-		d.logger.InfoContext(ctx, "DEBUG aggrGroup flush stage.Exec returned", "num_alerts", len(alerts), "error", err)
 		if err != nil {
 			logger := d.logger.With("num_alerts", len(alerts), "err", err)
 			if errors.Is(ctx.Err(), context.Canceled) {

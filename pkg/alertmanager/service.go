@@ -126,19 +126,12 @@ func (service *Service) PutAlerts(ctx context.Context, orgID string, alerts aler
 	service.serversMtx.RLock()
 	defer service.serversMtx.RUnlock()
 
-	service.settings.Logger().InfoContext(ctx, "DEBUG PutAlerts called", "org_id", orgID, "num_alerts", len(alerts))
-
 	server, err := service.getServer(orgID)
 	if err != nil {
-		service.settings.Logger().ErrorContext(ctx, "DEBUG PutAlerts getServer failed", "org_id", orgID, "error", err)
 		return err
 	}
 
-	err = server.PutAlerts(ctx, alerts)
-	if err != nil {
-		service.settings.Logger().ErrorContext(ctx, "DEBUG PutAlerts server.PutAlerts failed", "org_id", orgID, "error", err)
-	}
-	return err
+	return server.PutAlerts(ctx, alerts)
 }
 
 func (service *Service) TestReceiver(ctx context.Context, orgID string, receiver alertmanagertypes.Receiver) error {
