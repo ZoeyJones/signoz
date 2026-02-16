@@ -225,6 +225,12 @@ func (server *Server) PutAlerts(ctx context.Context, postableAlerts alertmanager
 func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertmanagertypes.Config) error {
 	config := alertmanagerConfig.AlertmanagerConfig()
 
+	// Apply global defaults (e.g., SMTP settings) to all receivers.
+	// Without this, email receivers lack Global.SMTPSmarthost and are silently skipped.
+	if err := config.UnmarshalYAML(func(i interface{}) error { return nil }); err != nil {
+		return err
+	}
+
 	var err error
 	server.tmpl, err = alertmanagertypes.FromGlobs(config.Templates)
 	if err != nil {
