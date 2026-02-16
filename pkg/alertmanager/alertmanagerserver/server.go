@@ -255,6 +255,13 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		}
 		receivers[rcv.Name] = integrations
 		integrationsNum += len(integrations)
+		server.logger.InfoContext(ctx, "DEBUG receiver integrations",
+			"receiver", rcv.Name,
+			"integration_count", len(integrations),
+			"email_configs", len(rcv.EmailConfigs),
+			"webhook_configs", len(rcv.WebhookConfigs),
+			"smarthost", config.Global.SMTPSmarthost.String(),
+		)
 	}
 
 	// Build the map of time interval names to time interval definitions.
