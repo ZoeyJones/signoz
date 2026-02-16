@@ -317,6 +317,7 @@ func (server *Server) SetConfig(ctx context.Context, alertmanagerConfig *alertma
 		server.dispatcherMetrics,
 		server.notificationManager,
 		server.orgID,
+		receivers,
 	)
 
 	// Do not try to add these to server.wg as there seems to be a race condition if

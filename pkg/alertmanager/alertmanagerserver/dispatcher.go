@@ -45,6 +45,7 @@ type Dispatcher struct {
 	notificationManager nfmanager.NotificationManager
 	orgID               string
 	receiverRoutes      map[string]*dispatch.Route
+	receivers           map[string][]notify.Integration
 }
 
 // We use the upstream Limits interface from Prometheus
@@ -62,6 +63,7 @@ func NewDispatcher(
 	m *DispatcherMetrics,
 	n nfmanager.NotificationManager,
 	orgID string,
+	receivers map[string][]notify.Integration,
 ) *Dispatcher {
 	if lim == nil {
 		// Use a simple implementation when no limits are provided
@@ -79,6 +81,7 @@ func NewDispatcher(
 		limits:              lim,
 		notificationManager: n,
 		orgID:               orgID,
+		receivers:           receivers,
 	}
 	return disp
 }
@@ -325,31 +328,30 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *dispatch.Route) {
 	ag.insert(alert)
 
 	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-		for i, a := range alerts {
-			d.logger.InfoContext(ctx, "DEBUG alert before pipeline",
+		// DEBUG: Directly call integrations to bypass pipeline and test if SMTP works
+		if integrations, ok := d.receivers[ag.opts.Receiver]; ok {
+			d.logger.InfoContext(ctx, "DEBUG direct integration call",
 				"receiver", ag.opts.Receiver,
-				"alert_index", i,
-				"resolved", a.Resolved(),
-				"starts_at", a.StartsAt,
-				"ends_at", a.EndsAt,
-				"labels", a.Labels.String(),
+				"num_integrations", len(integrations),
+				"num_alerts", len(alerts),
 			)
-		}
-
-		// DEBUG: Also try direct RoutingStage type assertion to examine inner stages
-		if rs, ok := d.stage.(notify.RoutingStage); ok {
-			d.logger.InfoContext(ctx, "DEBUG RoutingStage receivers",
-				"receiver", ag.opts.Receiver,
-				"routing_stage_size", len(rs),
-			)
-			for name := range rs {
-				d.logger.InfoContext(ctx, "DEBUG RoutingStage entry",
-					"entry_name", name,
+			for idx, integration := range integrations {
+				d.logger.InfoContext(ctx, "DEBUG calling integration directly",
+					"receiver", ag.opts.Receiver,
+					"integration_name", integration.Name(),
+					"integration_index", idx,
+				)
+				retry, err := integration.Notify(ctx, alerts...)
+				d.logger.InfoContext(ctx, "DEBUG direct integration result",
+					"receiver", ag.opts.Receiver,
+					"integration_name", integration.Name(),
+					"retry", retry,
+					"error", fmt.Sprintf("%v", err),
 				)
 			}
 		} else {
-			d.logger.InfoContext(ctx, "DEBUG stage type",
-				"type", fmt.Sprintf("%T", d.stage),
+			d.logger.InfoContext(ctx, "DEBUG no integrations found for receiver",
+				"receiver", ag.opts.Receiver,
 			)
 		}
 
