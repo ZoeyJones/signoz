@@ -153,6 +153,10 @@ func (provider *provider) UpdateChannelByReceiverAndID(ctx context.Context, orgI
 		return err
 	}
 
+	if err := config.SetGlobalConfig(provider.config.Signoz.Config.Global); err != nil {
+		return err
+	}
+
 	if err := config.UpdateReceiver(receiver); err != nil {
 		return err
 	}
@@ -185,6 +189,10 @@ func (provider *provider) DeleteChannelByID(ctx context.Context, orgID string, c
 func (provider *provider) CreateChannel(ctx context.Context, orgID string, receiver alertmanagertypes.Receiver) (*alertmanagertypes.Channel, error) {
 	config, err := provider.configStore.Get(ctx, orgID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := config.SetGlobalConfig(provider.config.Signoz.Config.Global); err != nil {
 		return nil, err
 	}
 
